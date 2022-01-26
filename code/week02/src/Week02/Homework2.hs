@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE RecordWildCards     #-}
 
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
@@ -32,6 +33,7 @@ import           Playground.TH        (mkKnownCurrencies, mkSchemaDefinitions)
 import           Playground.Types     (KnownCurrency (..))
 import           Prelude              (IO, Semigroup (..), String, undefined)
 import           Text.Printf          (printf)
+import qualified Ledger as Scripts hiding (validatorHash)
 
 data MyRedeemer = MyRedeemer
     { flag1 :: Bool
@@ -40,26 +42,35 @@ data MyRedeemer = MyRedeemer
 
 PlutusTx.unstableMakeIsData ''MyRedeemer
 
+{-# INLINABLE validRedeemer #-}
+validRedeemer :: MyRedeemer -> Bool
+validRedeemer MyRedeemer{..} = (flag1 && flag2) || not (flag1 || flag2)
+
 {-# INLINABLE mkValidator #-}
 -- This should validate if and only if the two Booleans in the redeemer are equal!
 mkValidator :: () -> MyRedeemer -> ScriptContext -> Bool
-mkValidator _ _ _ = True -- FIX ME!
+mkValidator _ r _ = traceIfFalse "Invalid Redeemer. flag1 and flag2 are differents" $ validRedeemer r
 
 data Typed
 instance Scripts.ValidatorTypes Typed where
-    -- Implement me!
+    type instance DatumType Typed = ()
+    type instance RedeemerType Typed = MyRedeemer
 
 typedValidator :: Scripts.TypedValidator Typed
-typedValidator = undefined -- FIX ME!
+typedValidator = Scripts.mkTypedValidator @Typed
+    $$(PlutusTx.compile [|| mkValidator ||])
+    $$(PlutusTx.compile [|| wrap ||])
+  where
+    wrap = Scripts.wrapValidator @() @MyRedeemer
 
 validator :: Validator
-validator = undefined -- FIX ME!
+validator = Scripts.validatorScript typedValidator
 
 valHash :: Ledger.ValidatorHash
-valHash = undefined -- FIX ME!
+valHash = Scripts.validatorHash typedValidator
 
 scrAddress :: Ledger.Address
-scrAddress = undefined -- FIX ME!
+scrAddress = Scripts.scriptAddress validator
 
 type GiftSchema =
             Endpoint "give" Integer

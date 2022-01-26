@@ -28,27 +28,35 @@ import           Playground.TH        (mkKnownCurrencies, mkSchemaDefinitions)
 import           Playground.Types     (KnownCurrency (..))
 import           Prelude              (IO, Semigroup (..), String, undefined)
 import           Text.Printf          (printf)
+import qualified Ledger.Address as Scripts
 
 {-# INLINABLE mkValidator #-}
 -- This should validate if and only if the two Booleans in the redeemer are equal!
 mkValidator :: () -> (Bool, Bool) -> ScriptContext -> Bool
-mkValidator _ _ _ = True -- FIX ME!
+mkValidator _ (True, True) _ = True
+mkValidator _ (False, False) _ = True
+mkValidator _ _ _ = traceError "Error in validator. Booleans are different in redeemer"
 
 data Typed
 instance Scripts.ValidatorTypes Typed where
--- Implement the instance!
+    type instance DatumType Typed = ()
+    type instance RedeemerType Typed = (Bool, Bool)
 
 typedValidator :: Scripts.TypedValidator Typed
-typedValidator = undefined -- FIX ME!
+typedValidator = Scripts.mkTypedValidator @Typed
+    $$(PlutusTx.compile [|| mkValidator ||])
+    $$(PlutusTx.compile [|| wrap ||])
+  where
+    wrap = Scripts.wrapValidator @() @(Bool,Bool)
 
 validator :: Validator
-validator = undefined -- FIX ME!
+validator = Scripts.validatorScript typedValidator
 
 valHash :: Ledger.ValidatorHash
-valHash = undefined -- FIX ME!
+valHash = Scripts.validatorHash typedValidator
 
 scrAddress :: Ledger.Address
-scrAddress = undefined -- FIX ME!
+scrAddress = Scripts.scriptAddress validator
 
 type GiftSchema =
             Endpoint "give" Integer
