@@ -24,6 +24,7 @@ import           Plutus.Contract
 import qualified PlutusTx
 import           PlutusTx.Prelude     hiding (unless)
 import           Ledger               hiding (singleton)
+import qualified Ledger as L (before)
 import           Ledger.Constraints   (TxConstraints)
 import qualified Ledger.Constraints   as Constraints
 import qualified Ledger.Typed.Scripts as Scripts
@@ -47,7 +48,26 @@ PlutusTx.unstableMakeIsData ''VestingDatum
 -- This should validate if either beneficiary1 has signed the transaction and the current slot is before or at the deadline
 -- or if beneficiary2 has signed the transaction and the deadline has passed.
 mkValidator :: VestingDatum -> () -> ScriptContext -> Bool
-mkValidator _ _ _ = False -- FIX ME!
+mkValidator dat () ctx = traceIfFalse "Beneficiary1 or Beneficiary2 does not match criteria" matchesSomeBen
+
+  where
+      matchesSomeBen :: Bool
+      matchesSomeBen = matchesBen1 || matchesBen2
+
+      matchesBen1 :: Bool
+      matchesBen1 = signedByBeneficiary (beneficiary1 dat) && not (contains (to (deadline dat)) (txInfoValidRange info))
+
+      matchesBen2 :: Bool
+      matchesBen2 = signedByBeneficiary (beneficiary2 dat) && contains (from (deadline dat)) (txInfoValidRange info)
+
+
+      info :: TxInfo
+      info = scriptContextTxInfo ctx
+
+      signedByBeneficiary :: PaymentPubKeyHash -> Bool
+      signedByBeneficiary = txSignedBy info . unPaymentPubKeyHash
+
+
 
 data Vesting
 instance Scripts.ValidatorTypes Vesting where
